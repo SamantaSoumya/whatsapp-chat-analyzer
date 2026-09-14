@@ -14,24 +14,37 @@ def preprocess(data):
     df=pd.DataFrame({'user_message':messages,'message_date':dates})
     df['message_date']=df['message_date'].str.replace('pm', 'PM').str.replace('am', 'AM')
 
-    #seperate condition for 12 hour 24 hour and 2 digit year 4 digit year
-    if re.search(r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s(?:am|pm)\s-\s', data):
-        try:
-            df['message_date'] = pd.to_datetime(df['message_date'], format='%d/%m/%y, %I:%M %p - ')
-        except:
-            df['message_date'] = pd.to_datetime(df['message_date'], format='%d/%m/%Y, %I:%M %p - ')
+    # Try all known date formats; fall back to mixed parsing for pandas 3.x compatibility
+    is_12hr = re.search(r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s(?:AM|PM)\s-\s', df['message_date'].iloc[0])
+    parsed = False
+    if is_12hr:
+        for fmt in ['%d/%m/%y, %I:%M %p - ', '%d/%m/%Y, %I:%M %p - ',
+                    '%m/%d/%y, %I:%M %p - ', '%m/%d/%Y, %I:%M %p - ']:
+            try:
+                df['message_date'] = pd.to_datetime(df['message_date'], format=fmt)
+                parsed = True
+                break
+            except Exception:
+                continue
     else:
-        try:
-            df['message_date']=pd.to_datetime(df['message_date'],format='%d/%m/%y, %H:%M - ')
-        except:
-            df['message_date']=pd.to_datetime(df['message_date'],format='%d/%m/%Y, %H:%M - ')
+        for fmt in ['%d/%m/%y, %H:%M - ', '%d/%m/%Y, %H:%M - ',
+                    '%m/%d/%y, %H:%M - ', '%m/%d/%Y, %H:%M - ']:
+            try:
+                df['message_date'] = pd.to_datetime(df['message_date'], format=fmt)
+                parsed = True
+                break
+            except Exception:
+                continue
+    if not parsed:
+        # Last resort: let pandas infer format
+        df['message_date'] = pd.to_datetime(df['message_date'], format='mixed', dayfirst=True)
 
     df.rename(columns={'message_date':'date'},inplace=True)
 
     users=[]
     messages=[]
     for message in df['user_message']:
-        entry=re.split('([\w\W]+?):\s',message)
+        entry=re.split(r'([\w\W]+?):\s',message)
         if entry[1:]:
             users.append(entry[1])
             messages.append(entry[2])
